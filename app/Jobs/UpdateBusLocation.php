@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\LocationUpdated;
 use App\Models\Location;
+use App\Models\Bus;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
@@ -18,7 +19,6 @@ class UpdateBusLocation implements ShouldQueue
     public $location;
     public $latitude;
     public $longitude;
-
 
     /**
      * Create a new job instance.
@@ -36,13 +36,17 @@ class UpdateBusLocation implements ShouldQueue
      */
     public function handle()
     {
-        $locationRecord = Location::create([
-            'bus_id' => $this->busId,
-            'location' => $this->location,
-            'latitude' => $this->latitude,
-            'longitude' => $this->longitude,
-        ]);
+        $bus = Bus::find($this->busId);
 
-        event(new LocationUpdated($locationRecord));
+        if ($bus && $bus->status !== 0) {
+            $locationRecord = Location::create([
+                'bus_id' => $this->busId,
+                'location' => $this->location,
+                'latitude' => $this->latitude,
+                'longitude' => $this->longitude,
+            ]);
+
+            event(new LocationUpdated($locationRecord));
+        }
     }
 }

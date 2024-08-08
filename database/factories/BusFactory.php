@@ -17,7 +17,7 @@ class BusFactory extends Factory
     public function definition(): array
     {
         return [
-            'bus_no' => fake()->randomNumber(),
+            'bus_no' => fake()->regexify('[A-Z]{2}[0-9]{3}[A-Z]'),
             'status' => fake()->numberBetween(1, 0),
         ];
     }
