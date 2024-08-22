@@ -1,0 +1,103 @@
+import "./bootstrap";
+import.meta.glob(["../js/*"])
+
+document.addEventListener('DOMContentLoaded', function () {
+    let map;
+    const busMarkers = {};
+    const rootUrl = "http://127.0.0.1:8000";
+
+    const initMap = () => {
+        map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: 14.5547, lng: 121.0244 },
+            zoom: 13
+        });
+    };
+
+    const connectWebSocket = (busId) => {
+        window.Echo.channel(`bus-location.${busId}`)
+            .listen('location.updated', (e) => {
+                updateBusLocation(busId, e.latitude, e.longitude);
+            });
+    };
+
+    const updateBusLocation = (busId, latitude, longitude) => {
+        const latLng = new google.maps.LatLng(latitude, longitude);
+
+        if (busMarkers[busId]) {
+            busMarkers[busId].setPosition(latLng);
+        } else {
+            busMarkers[busId] = new google.maps.Marker({
+                position: latLng,
+                map: map,
+                title: `Bus ID: ${busId}`
+            });
+
+            const infowindow = new google.maps.InfoWindow({
+                content: `Bus ID: ${busId}`
+            });
+
+            busMarkers[busId].addListener('click', () => {
+                infowindow.open(map, busMarkers[busId]);
+            });
+        }
+        map.setCenter(latLng);
+    };
+
+    const getBusLocations = async () => {
+        try {
+            const response = await axios.get(`${rootUrl}/api/buses`);
+            const buses = response.data;
+            buses.forEach(bus => {
+                connectWebSocket(bus.id);
+                getLatestLocation(bus.id);
+                setInterval(() => getLatestLocation(bus.id), 10000);
+            });
+        } catch (err) {
+            console.log(err.message);
+        }
+    };
+
+    const getLatestLocation = async (busId) => {
+        try {
+            const response = await axios.get(`${rootUrl}/api/bus/latest-location/${busId}`);
+            const location = response.data;
+            updateBusLocation(busId, location.latitude, location.longitude);
+        } catch (err) {
+            console.log(err.message);
+        }
+    };
+
+    const updateBusLocationServer = async (busId, latitude, longitude) => {
+        try {
+            await axios.post(`${rootUrl}/api/bus/update-location`, {
+                bus_id: busId,
+                location: 'current',
+                latitude: latitude,
+                longitude: longitude
+            });
+        } catch (err) {
+            console.log(err.message);
+        }
+    };
+
+    const startUpdatingBusLocations = () => {
+        setInterval(async () => {
+            try {
+                const response = await axios.get(`${rootUrl}/api/buses`);
+                const buses = response.data;
+                buses.forEach(async bus => {
+                    const locationResponse = await axios.get(`${rootUrl}/api/bus/latest-location/${bus.id}`);
+                    const location = locationResponse.data;
+                    updateBusLocationServer(bus.id, location.latitude, location.longitude);
+                });
+            } catch (err) {
+                console.log(err.message);
+            }
+        }, 10000);
+    };
+
+    // Initialize map and start processes
+    initMap();
+    getBusLocations();
+    startUpdatingBusLocations();
+});

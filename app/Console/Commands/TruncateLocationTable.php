@@ -15,7 +15,6 @@ class TruncateLocationTable extends Command
     {
         DB::table('locations')->truncate();
 
-        // Define the ANSI escape codes for blue background
         $blueBackground = "\e[44m";
         $reset = "\e[0m";
 

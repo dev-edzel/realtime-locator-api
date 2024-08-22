@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Bus Locator</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+
+<body>
+    <div id="map" style="height: 500px;"></div>
+
+    <!-- Include the Google Maps API script -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laravel-echo/dist/echo.iife.min.js"></script>
+
+    <!-- Initialize the map and your custom scripts -->
+    <script>
+        let map;
+        const busMarkers = {};
+        const rootUrl = "http://127.0.0.1:8000";
+
+        function initMap() {
+            // Initialize the Google Map
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 14.5547, lng: 121.0244 },
+                zoom: 13
+            });
+
+            getBusLocations();
+            startUpdatingBusLocations();
+        }
+
+        const connectWebSocket = (busId) => {
+            window.Echo.channel(`bus-location.${busId}`)
+                .listen('location.updated', (e) => {
+                    updateBusLocation(busId, e.latitude, e.longitude);
+                });
+        };
+
+        const updateBusLocation = (busId, latitude, longitude) => {
+            const latLng = new google.maps.LatLng(latitude, longitude);
+
+            if (busMarkers[busId]) {
+                busMarkers[busId].setPosition(latLng);
+            } else {
+                busMarkers[busId] = new google.maps.Marker({
+                    position: latLng,
+                    map: map,
+                    title: `Bus ID: ${busId}`
+                });
+
+                const infowindow = new google.maps.InfoWindow({
+                    content: `Bus ID: ${busId}`
+                });
+
+                busMarkers[busId].addListener('click', () => {
+                    infowindow.open(map, busMarkers[busId]);
+                });
+            }
+            map.setCenter(latLng);
+        };
+
+        const getBusLocations = async () => {
+            try {
+                const response = await axios.get(`${rootUrl}/api/buses`);
+                const buses = response.data;
+                buses.forEach(bus => {
+                    connectWebSocket(bus.id);
+                    getLatestLocation(bus.id);
+                    setInterval(() => getLatestLocation(bus.id), 10000);
+                });
+            } catch (err) {
+                console.log(err.message);
+            }
+        };
+
+        const getLatestLocation = async (busId) => {
+            try {
+                const response = await axios.get(`${rootUrl}/api/bus/latest-location/${busId}`);
+                const location = response.data;
+                updateBusLocation(busId, location.latitude, location.longitude);
+            } catch (err) {
+                console.log(err.message);
+            }
+        };
+
+        const updateBusLocationServer = async (busId, latitude, longitude) => {
+            try {
+                await axios.post(`${rootUrl}/api/bus/update-location`, {
+                    bus_id: busId,
+                    location: 'current',
+                    latitude: latitude,
+                    longitude: longitude
+                });
+            } catch (err) {
+                console.log(err.message);
+            }
+        };
+
+        const startUpdatingBusLocations = () => {
+            setInterval(async () => {
+                try {
+                    const response = await axios.get(`${rootUrl}/api/buses`);
+                    const buses = response.data;
+                    buses.forEach(async bus => {
+                        const locationResponse = await axios.get(`${rootUrl}/api/bus/latest-location/${bus.id}`);
+                        const location = locationResponse.data;
+                        updateBusLocationServer(bus.id, location.latitude, location.longitude);
+                    });
+                } catch (err) {
+                    console.log(err.message);
+                }
+            }, 10000);
+        };
+    </script>
+</body>
+
+</html>
